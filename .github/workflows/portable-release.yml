@@ -2,7 +2,7 @@ name: Build Office Portable
 
 on:
   schedule:
-    - cron: '23 */6 * * *'
+    - cron: '23 6 * * 1' # Monday 09:23 Europe/Istanbul (UTC+3)
   workflow_dispatch:
     inputs:
       force:
