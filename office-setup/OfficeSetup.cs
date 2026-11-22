@@ -38,7 +38,7 @@ internal sealed class AssociationStore
     private string MenuKey(OfficeApp app,string ext) { return "Software\\Classes\\SystemFileAssociations\\"+ext+"\\shell\\CraftPortable."+app.Id; }
     private string NewKey(OfficeApp app) { return "Software\\Classes\\"+app.Extensions[0]+"\\ShellNew"; }
     private string NewLabel(OfficeApp app)
-    { return app.Id=="Excel"?"Книга Excel":app.Id=="PowerPoint"?"Презентация PowerPoint":app.Id=="PDF"?"Документ PDF":"Документ Word"; }
+    { return app.Id=="Excel"?"Таблица Excel":app.Id=="PowerPoint"?"Презентация PowerPoint":app.Id=="PDF"?"Документ PDF":"Документ Word"; }
     private byte[] Template(OfficeApp app)
     {
         using(var stream=System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("CraftPortable."+app.Id+".Template"))
