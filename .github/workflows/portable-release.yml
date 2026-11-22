@@ -1,0 +1,168 @@
+name: Build Office Portable
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if upstream versions have not changed
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'ci/**'
+      - 'patches/**'
+      - 'overlay/**'
+      - 'office-setup/**'
+      - '.github/workflows/**'
+      - 'base-versions.json'
+      - 'USER-GUIDE.txt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: office-portable-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      changed: ${{ steps.versions.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test archive safety and build logic
+        run: python ci/test_office.py
+      - name: Check stable upstream releases
+        id: versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_BUILD: ${{ inputs.force }}
+        run: |
+          if [[ "$FORCE_BUILD" == "true" ]]; then
+            python ci/office.py discover --force
+          else
+            python ci/office.py discover
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.versions.outputs.changed == 'true'
+        with:
+          name: upstream-state
+          path: .build/state.json
+          if-no-files-found: error
+          retention-days: 3
+
+  build:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [wordcraft, gridcraft, deckcraft, pdfcraft]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: upstream-state
+          path: .build
+      - name: Select dependency cache
+        id: cache-key
+        env:
+          BUILD_APP: ${{ matrix.app }}
+        shell: pwsh
+        run: |
+          $state=Get-Content .build/state.json -Raw | ConvertFrom-Json
+          $commit=$state.sources.($env:BUILD_APP).commit
+          "key=windows-gnu-1.100-$env:BUILD_APP-$env:ImageVersion-$commit-$($state.recipeDigest)" | Out-File $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .build/cargo
+            .build/target
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            windows-gnu-1.100-${{ matrix.app }}-
+      - name: Build and test native portable application
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_APP: ${{ matrix.app }}
+        shell: pwsh
+        run: ./ci/build.ps1 -App $env:BUILD_APP
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.app }}
+          path: .build/out/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  package:
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: upstream-state
+          path: .build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: .build/incoming
+      - name: Generate blank documents, test Office Setup and package clean Data
+        shell: pwsh
+        run: |
+          $env:TEMP=Join-Path $env:GITHUB_WORKSPACE '.build/temp-package'
+          $env:TMP=$env:TEMP
+          New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+          python ci/office.py package
+          if ($LASTEXITCODE -ne 0) { throw 'Package validation failed' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: dist
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stamp="$(date -u +%Y.%m.%d)"
+          tag="v${stamp}.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          gh release create "$tag" \
+            dist/Office-Portable-Windows-x64.zip \
+            dist/Office-Portable-source.zip \
+            dist/upstream-versions.json \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Office Portable ${stamp}" \
+            --notes-file dist/Release-notes.md \
+            --latest
