@@ -158,7 +158,6 @@ jobs:
           tag="v${stamp}.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           gh release create "$tag" \
             dist/Office-Portable-Windows-x64.zip \
-            dist/Office-Portable-source.zip \
             dist/upstream-versions.json \
             dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \

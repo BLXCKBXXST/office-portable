@@ -227,7 +227,6 @@ def package():
     with zipfile.ZipFile(archive) as z:
         if z.testzip() is not None:raise ValueError('Distribution ZIP failed CRC validation')
         if any('/Data/' in n and not n.endswith('/') for n in z.namelist()):raise ValueError('A profile entered the distribution')
-    run(['git','archive','--format=zip','--output='+str(dist/'Office-Portable-source.zip'),'HEAD'])
     (dist/'SHA256SUMS.txt').write_text('\n'.join(sha(p)+'  '+p.name for p in sorted(dist.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt')+'\n',encoding='ascii')
     notes=['Office Portable — Windows x64','', 'Неофициальные модифицированные сборки Craft; не Microsoft Office.','', '| Программа | Исходный проект | Версия |','|---|---|---|']
     for app,title in TITLES.items():notes.append('| '+title+' | '+app+' | '+state['sources'][app]['tag']+' |')
