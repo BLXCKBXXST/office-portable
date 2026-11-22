@@ -117,15 +117,6 @@
  pub mod recovery;
  pub mod sample;
  pub mod sounds;
-@@ -381,7 +382,7 @@
-             ac_lists: true,
-             ac_entries: Vec::new(),
-             ac_removed: Vec::new(),
--            author: "Presenter".into(),
-+            author: "user".into(),
-             undo_limit: 500,
-             recovery_minutes: 1.0,
-             units: deckcraft_geom::Unit::Inches,
 --- /dev/null
 +++ b/deckcraft/crates/engine/src/portable.rs
 @@ -0,0 +1,72 @@
@@ -863,15 +854,6 @@
  pub mod recent;
  pub mod record;
  pub mod sample;
-@@ -441,7 +442,7 @@
-         Prefs {
-             enter_direction: "down".into(),
-             autocomplete: true,
--            user_name: "GridCraft User".into(),
-+            user_name: "user".into(),
-             default_font: gridcraft_model::DEFAULT_FONT.into(),
-             default_font_size: gridcraft_model::DEFAULT_FONT_SIZE,
-             sheets_in_new_workbook: 1,
 --- /dev/null
 +++ b/gridcraft/crates/engine/src/portable.rs
 @@ -0,0 +1,72 @@
@@ -3047,25 +3029,6 @@
                      }
                      if !title.is_empty() {
                          ui.label(title);
---- a/pdfcraft/crates/ui-egui/src/tools/comments/state.rs
-+++ b/pdfcraft/crates/ui-egui/src/tools/comments/state.rs
-@@ -6,15 +6,7 @@
- 
- /// The user's login name, which Acrobat uses as the default comment author.
- pub(super) fn login_name() -> String {
--    #[cfg(not(target_arch = "wasm32"))]
--    for var in ["USER", "USERNAME", "LOGNAME"] {
--        if let Ok(v) = std::env::var(var)
--            && !v.trim().is_empty()
--        {
--            return v;
--        }
--    }
--    "Guest".into()
-+    "user".into()
- }
- 
- /// A drag in progress on a page.
 --- a/pdfcraft/crates/ui-egui/src/tools/content_ui.rs
 +++ b/pdfcraft/crates/ui-egui/src/tools/content_ui.rs
 @@ -52,10 +52,10 @@
@@ -3197,7 +3160,7 @@
 +
 +## Local portable edition
 +
-+`vendor/craft-font-store` vendors the existing MIT OR Apache-2.0 dependency from [storytold/craft-libs at 762a06a](https://github.com/storytold/craft-libs/tree/762a06a4c6b48b522b7d4de84a87917ef90265e6/crates/font-store), including its original index data. It only adds separate profile directories. Its upstream source and licence notices are retained. The account silhouette is drawn originally in Rust; no stock image is included.
++`vendor/craft-font-store` vendors the existing MIT OR Apache-2.0 dependency from [storytold/craft-libs at 762a06a](https://github.com/storytold/craft-libs/tree/762a06a4c6b48b522b7d4de84a87917ef90265e6/crates/font-store), including its original index data. It only adds separate profile directories. Its upstream source and licence notices are retained.
 --- a/wordcraft/Cargo.toml
 +++ b/wordcraft/Cargo.toml
 @@ -29,7 +29,7 @@
@@ -3561,17 +3524,6 @@
 +        std::fs::remove_dir_all(dir).unwrap();
 +    }
 +}
---- a/wordcraft/crates/engine/src/cmd/references/tests.rs
-+++ b/wordcraft/crates/engine/src/cmd/references/tests.rs
-@@ -361,7 +361,7 @@
-     s.initials = String::new();
-     s.run("references.updateFields", &json!({})).unwrap();
-     let got: Vec<String> = story_fields(&s, StoryRef::Part(hdr)).into_iter().map(|(_, r)| r).collect();
--    assert_eq!(got, ["Ada Lovelace", "AL", "ADA LOVELACE", "Someone Else"]);
-+    assert_eq!(got, ["Ada Lovelace", "", "ADA LOVELACE", "Someone Else"]);
- }
- 
- /// A quoted text after TITLE, SUBJECT, AUTHOR, KEYWORDS or COMMENTS replaces the property
 --- a/wordcraft/crates/engine/src/packs/store.rs
 +++ b/wordcraft/crates/engine/src/packs/store.rs
 @@ -34,7 +34,22 @@
@@ -3598,66 +3550,6 @@
      }
  
      fn keep(&self, index: PackIndex) -> Vec<Pack> {
---- a/wordcraft/crates/engine/src/session/lifecycle.rs
-+++ b/wordcraft/crates/engine/src/session/lifecycle.rs
-@@ -104,7 +104,7 @@
-             goal_x,
-             page_hint,
-             registry,
--            author: "WordCraft User".into(),
-+            author: "user".into(),
-             initials: String::new(),
-             painter: None,
-             status: String::new(),
---- a/wordcraft/crates/engine/src/session/query.rs
-+++ b/wordcraft/crates/engine/src/session/query.rs
-@@ -138,8 +138,8 @@
- 
-     /// Initials for new comments: the ones set in File › Options, else the user name's.
-     pub fn user_initials(&self) -> String {
--        let set = self.initials.trim();
--        if set.is_empty() { self.author.split_whitespace().filter_map(|w| w.chars().next()).collect() } else { set.to_string() }
-+        // This portable edition creates comments without initials. Imported authors are retained.
-+        String::new()
-     }
- 
-     /// The document's file name and full path for fields (`FILENAME`) and layout context.
---- a/wordcraft/crates/engine/src/tests.rs
-+++ b/wordcraft/crates/engine/src/tests.rs
-@@ -35,6 +35,15 @@
-         eprintln!("{test}: skipped, needs the Language data (set CRAFT_I18N_DIR to a craft-i18n checkout)");
-     }
-     missing
-+}
-+
-+#[test]
-+fn portable_edition_uses_a_neutral_author_and_no_generated_initials() {
-+    let mut session = s();
-+    assert_eq!(session.author, "user");
-+    assert_eq!(session.user_initials(), "");
-+    session.initials = "WU".into();
-+    assert_eq!(session.user_initials(), "", "legacy preferences must not restore initials");
- }
- 
- fn s() -> Session {
-@@ -3549,7 +3558,7 @@
-     // Comments use the same name.
-     run(&mut s, "select.text", json!({"text": "added"}));
-     run(&mut s, "review.newComment", json!({"text": "Tightened."}));
--    assert!(s.doc.comments.values().all(|c| c.author == "Claude (copyedit)" && c.initials == "C("));
-+    assert!(s.doc.comments.values().all(|c| c.author == "Claude (copyedit)" && c.initials.is_empty()));
- }
- 
- #[test]
-@@ -3607,7 +3616,7 @@
-     let mut s = s();
-     for bad in [json!(null), json!({}), json!({"name": 5}), json!({"name": ""}), json!({"name": " \t\n "}), json!({"name": "\u{0}\u{7}"})] {
-         assert!(s.run("file.setAuthor", &bad).is_err(), "{bad} should be refused");
--        assert_eq!(s.author, "WordCraft User", "a refused name leaves the author alone");
-+        assert_eq!(s.author, "user", "a refused name leaves the author alone");
-     }
-     run(&mut s, "file.setAuthor", json!({"name": "Ada\u{0}\u{1b} Lovelace"}));
-     assert_eq!(s.author, "Ada Lovelace", "control characters can't reach the saved XML");
 --- a/wordcraft/crates/mcp/src/backend.rs
 +++ b/wordcraft/crates/mcp/src/backend.rs
 @@ -59,7 +59,7 @@
@@ -3790,21 +3682,6 @@
          #[cfg(not(target_arch = "wasm32"))]
          file_browser::show(self, ctx);
          colors::show(self, ctx);
---- a/wordcraft/crates/ui-egui/src/app/prefs.rs
-+++ b/wordcraft/crates/ui-egui/src/app/prefs.rs
-@@ -51,9 +51,10 @@
-         if let Some(author) = self.ui.author.take()
-             && (author.is_empty() || !author.trim().is_empty())
-         {
--            self.session.author = author;
-+            self.session.author = if author == "WordCraft User" || author == "Word User" { "user".into() } else { author };
-         }
--        self.session.initials = std::mem::take(&mut self.ui.initials).chars().take(wordcraft_engine::cmd::options::MAX_INITIALS_CHARS).collect();
-+        self.ui.initials.clear();
-+        self.session.initials.clear();
-         for w in std::mem::take(&mut self.ui.dictionary).iter().take(MAX_DICTIONARY) {
-             let w = w.trim();
-             if !w.is_empty() && w.chars().count() <= wordcraft_engine::cmd::options::MAX_WORD_CHARS {
 --- a/wordcraft/crates/ui-egui/src/backstage.rs
 +++ b/wordcraft/crates/ui-egui/src/backstage.rs
 @@ -737,8 +737,8 @@
@@ -3829,20 +3706,7 @@
              ),
              &[("language", lang), ("name", name)],
          )),
-@@ -384,8 +384,10 @@
-                         let (r, resp) = ui.allocate_exact_size(vec2(control_h, control_h), Sense::click());
-                         ui.painter().circle_filled(r.center(), control_h / 2.0 - 1.0, t.accent);
-                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tl!("Account")));
--                        let initials: String = app.session.user_initials().chars().take(2).collect();
--                        ui.painter().text(r.center(), Align2::CENTER_CENTER, initials, semibold(10.5), t.on_accent);
-+                        // Original vector user silhouette; no stock asset and no account initials.
-+                        let avatar = ui.painter().with_clip_rect(r.shrink(3.0));
-+                        avatar.circle_filled(r.center() + vec2(0.0, -4.0), 3.8, t.on_accent);
-+                        avatar.rect_filled(Rect::from_center_size(r.center() + vec2(0.0, 7.0), vec2(13.0, 11.0)), 6.0, t.on_accent);
-                         if resp.on_hover_text(format!("{} — set your name in File › Options", app.session.author)).clicked() {
-                             let _ = app.run("ui.backstage", json!({"value": true, "page": "options", "pane": "general"}));
-                         }
-@@ -421,7 +423,7 @@
+@@ -421,7 +421,7 @@
              // Centred title.
              let title = if !app.has_document() {
                  // No document open (#1129): the app's name alone.
@@ -3995,37 +3859,7 @@
          ))
          .changed()
      {
-@@ -278,27 +278,8 @@
-                 }
-             });
-         });
--        t.row(|r| {
--            let initials_label = r.cell(|ui| ui.label(tl!("Initials:")));
--            r.cell(|ui| {
--                let mut i = app.session.initials.clone();
--                let hint = app.session.user_initials();
--                if ui
--                    .add(
--                        egui::TextEdit::singleline(&mut i)
--                            .desired_width(80.0)
--                            .char_limit(wordcraft_engine::cmd::options::MAX_INITIALS_CHARS)
--                            .hint_text(hint),
--                    )
--                    .labelled_by(initials_label.id)
--                    .changed()
--                {
--                    set(app, json!({"initials": i}));
--                }
--            });
--        });
--    });
--    note(ui, "New comments and tracked changes are recorded under this name and these initials.");
-+    });
-+    ui.label("Новые комментарии и исправления записываются под этим именем.");
- }
- 
- fn display(app: &mut WordApp, ui: &mut Ui) {
-@@ -499,7 +480,7 @@
+@@ -499,7 +499,7 @@
      // The browser can't write to the user's files, so AutoSave can't be turned on there (#176).
      let browser = app.autosave_block() == Some(crate::AutoSaveBlock::Browser);
      let mut autosave = app.autosave && !browser;
@@ -4034,7 +3868,7 @@
      if browser {
          r.on_disabled_hover_text(crate::AutoSaveBlock::Browser.reason());
      } else if r.changed() {
-@@ -536,7 +517,7 @@
+@@ -536,7 +536,7 @@
      let text = if crate::ribbon::caret_no_proof(app) {
          tl!("The text at the insertion point is marked Do not check spelling or grammar.").to_string()
      } else if !crate::ribbon::caret_language_proofed(app) {
@@ -4043,7 +3877,7 @@
      } else {
          let unreadable = crate::ribbon::caret_unreadable_dictionary(app);
          crate::chrome::dictionary_problem(&lang, &unreadable, crate::ribbon::caret_missing_dictionary(app))
-@@ -837,7 +818,7 @@
+@@ -837,7 +837,7 @@
          });
          combo.response.labelled_by(label.id);
      });
@@ -4052,7 +3886,7 @@
  }
  
  /// Interface language: follow the system (the default) or pick one (#8).
-@@ -938,17 +919,17 @@
+@@ -938,17 +938,17 @@
  fn default_app_button(app: &mut WordApp, ui: &mut Ui) {
      if app.services.make_default_app.is_some() {
          let hint = if cfg!(target_os = "windows") {
@@ -4074,26 +3908,6 @@
                  .small()
                  .weak(),
          );
---- a/wordcraft/crates/ui-egui/src/options/tests.rs
-+++ b/wordcraft/crates/ui-egui/src/options/tests.rs
-@@ -44,7 +44,7 @@
- #[test]
- fn user_name_field_disables_when_protection_starts() {
-     let mut h = nav_harness("en", 100);
--    let user_name = || egui_kittest::kittest::By::new().role(egui::accesskit::Role::TextInput).value("WordCraft User");
-+    let user_name = || egui_kittest::kittest::By::new().role(egui::accesskit::Role::TextInput).value("user");
-     assert!(!h.get(user_name()).accesskit_node().is_disabled());
-     h.state_mut().run("review.restrict", json!({"mode": "readOnly"})).unwrap();
-     h.run_steps(4);
-@@ -161,7 +161,7 @@
-     b.apply_prefs(UiState::from_json(&saved).unwrap());
-     assert_eq!(b.session.prefs, a.session.prefs);
-     assert_eq!(b.session.prefs.units, Some(Unit::Centimeters));
--    assert_eq!(b.session.initials, "VK");
-+    assert!(b.session.initials.is_empty(), "legacy initials are discarded on loading portable preferences");
-     assert_eq!((b.ui.recent_count, b.ui.print_backgrounds), (30, true));
-     assert_eq!(b.ui.status_count, StatusCount::CharactersNoSpaces, "#2797: what the status bar counts");
-     assert!(wordcraft_engine::proof::user_dictionary().contains(&"zqxoptionsword".to_string()));
 --- a/wordcraft/crates/ui-egui/src/ribbon/review.rs
 +++ b/wordcraft/crates/ui-egui/src/ribbon/review.rs
 @@ -174,7 +174,6 @@

@@ -194,13 +194,16 @@ def package():
     run([package/'Word/Word-cli.exe','inspect',templates/'Empty.docx'])
     run([package/'Excel/Excel-cli.exe','run','--in',templates/'Empty.xlsx','--quiet'])
     run([package/'PowerPoint/PowerPoint-cli.exe','run','--in',templates/'Empty.pptx'])
-    # Verify the actual headless engine's default author, not just a source string.
+    # Retain the upstream author/initials behavior; portability must not change it.
     probe=WORK/'identity-probe.docx'
     run([package/'Word/Word-cli.exe','run','--cmd','text.insert={"text":"Office Portable verification"}','--cmd','select.text={"text":"Office Portable verification"}','--cmd','review.newComment={"text":"profile author probe"}','--save',probe])
     import xml.etree.ElementTree as ET
     with zipfile.ZipFile(probe) as z:comments=ET.fromstring(z.read('word/comments.xml'))
     ns='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-    if not list(comments) or any(c.attrib.get(ns+'author')!='user' or c.attrib.get(ns+'initials','') for c in comments):raise ValueError('Neutral user / no-initials regression')
+    if not list(comments) or any(c.attrib.get(ns+'author')!='WordCraft User' or c.attrib.get(ns+'initials')!='WU' for c in comments):raise ValueError('Upstream default author / initials regression')
+    run([package/'Word/Word-cli.exe','run','--cmd','file.options={"author":"Portable verification","initials":"PV"}','--cmd','text.insert={"text":"Custom identity verification"}','--cmd','select.text={"text":"Custom identity verification"}','--cmd','review.newComment={"text":"explicit initials probe"}','--save',WORK/'custom-identity-probe.docx'])
+    with zipfile.ZipFile(WORK/'custom-identity-probe.docx') as z:custom_comments=ET.fromstring(z.read('word/comments.xml'))
+    if not list(custom_comments) or any(c.attrib.get(ns+'author')!='Portable verification' or c.attrib.get(ns+'initials')!='PV' for c in custom_comments):raise ValueError('Upstream custom author / initials regression')
     pdf=json.loads(run([package/'PDF/PDF-cli.exe','info',templates/'Empty.pdf']))
     if pdf.get('pages')!=1 or pdf.get('warnings') or pdf.get('javascript'):raise ValueError('Invalid blank PDF template')
     compiler=pathlib.Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
@@ -213,7 +216,7 @@ def package():
     if 'PASS:' not in result:raise ValueError('Office Setup registry sandbox tests failed')
     print(result.strip())
     shutil.copy2(ROOT/'USER-GUIDE.txt',package/'Readme.txt')
-    state['verification']={'portableMarkerTests':'passed','nativeCliSmokeTests':'passed','blankTemplates':'passed','officeSetupSandboxTests':'passed','systemDllImportsOnly':True,'profilesExcluded':True,'nativeGuiVisualTests':'not run on hosted CI'}
+    state['verification']={'portableMarkerTests':'passed','nativeCliSmokeTests':'passed','upstreamAuthorAndInitials':'passed','blankTemplates':'passed','officeSetupSandboxTests':'passed','systemDllImportsOnly':True,'profilesExcluded':True,'nativeGuiVisualTests':'not run on hosted CI'}
     (package/'Build-info.json').write_text(json.dumps(state,indent=2),encoding='utf-8')
     (dist/'upstream-versions.json').write_text(json.dumps(state,indent=2),encoding='utf-8')
     sums=[sha(p)+'  '+p.relative_to(package).as_posix() for p in sorted(package.rglob('*')) if p.is_file() and 'Data' not in p.relative_to(package).parts]
@@ -228,9 +231,7 @@ def package():
         if z.testzip() is not None:raise ValueError('Distribution ZIP failed CRC validation')
         if any('/Data/' in n and not n.endswith('/') for n in z.namelist()):raise ValueError('A profile entered the distribution')
     (dist/'SHA256SUMS.txt').write_text('\n'.join(sha(p)+'  '+p.name for p in sorted(dist.iterdir()) if p.is_file() and p.name!='SHA256SUMS.txt')+'\n',encoding='ascii')
-    notes=['Office Portable — Windows x64','', 'Неофициальные модифицированные сборки Craft; не Microsoft Office.','', '| Программа | Исходный проект | Версия |','|---|---|---|']
-    for app,title in TITLES.items():notes.append('| '+title+' | '+app+' | '+state['sources'][app]['tag']+' |')
-    notes+=['','Единая структура Data, имя user по умолчанию, нейтральный аватар Word, модуль оригинального обновления удалён. Office Setup добавляет ассоциации и четыре корректных шаблона в «Создать».','', 'Архив содержит пустые Data. При обновлении сохраните свои Settings, User и Recovery.','', 'Сборка без цифровой подписи оригинального издателя. Контрольные суммы и исходные изменения приложены.']
+    notes=['Переносимые Word, Excel, PowerPoint и PDF для Windows x64: настройки рядом в Data, отдельный Office Setup для ассоциаций и меню «Создать». Оригинальный обновлятор удалён; остальной интерфейс и поведение сохранены.','', 'Оригиналы: '+' · '.join('['+app+' '+state['sources'][app]['tag']+'](https://github.com/storytold/'+app+')' for app in TITLES)+'.','', 'Неофициальная сборка, не Microsoft Office. При обновлении сохраните свою Data. Подписи оригинального издателя нет; контрольные суммы приложены.']
     (dist/'Release-notes.md').write_text('\n'.join(notes)+'\n',encoding='utf-8')
     print('Packaged '+str(archive))
 def main():

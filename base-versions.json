@@ -21,7 +21,6 @@
   "changes": [
     "native Data sections",
     "Word/Excel/PowerPoint/PDF display names and resources",
-    "neutral author and generic user avatar",
     "removed upstream updater",
     "per-user file associations and valid ShellNew templates"
   ]
